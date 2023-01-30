@@ -1,0 +1,10 @@
+[workspace]
+resolver = "2"
+
+members = [
+    "dg_xch_utils",
+    "lite-farmer"
+]
+
+[workspace.dependencies]
+dg_xch_utils = {path = "./dg_xch_utils", features=[]}

@@ -1,0 +1,5 @@
+[submodule "dg_xch_utils"]
+	path = dg_xch_utils
+	url = git@github.com:GalactechsLLC/dg_xch_utils.git
+[submodule "dg_xch_utils/"]
+	branch = gui_feature
