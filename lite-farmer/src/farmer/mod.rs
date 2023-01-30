@@ -713,32 +713,3 @@ pub async fn update_pool_state(farmer: Arc<Farmer>) {
         }
     }
 }
-
-//
-// #[tokio::test]
-// pub async fn test_socket() {
-//     let fullnode = FarmerClient::new_insecure("chia-iriga-demo.irulast-dev.com", 443, "testnet10").await;
-//     let client =
-//         FarmerClient::new_insecure("localhost", 58444,"testnet10").await;
-//     let signage_handle_id = Uuid::new_v4();
-//     let signage_handle = Arc::new(NewSignagePointHandle {
-//         id: signage_handle_id,
-//         state: state.clone(),
-//         farmer: farmer_arc.clone(())
-//     });
-//     client
-//         .client
-//         .lock()
-//         .await
-//         .subscribe(
-//             signage_handle_id,
-//             ChiaMessageHandler::new(
-//                 ChiaMessageFilter {
-//                     msg_type: Some(ProtocolMessageTypes::NewSignagePoint),
-//                 },
-//                 signage_handle,
-//             ),
-//         )
-//         .await;
-//     let _ = client.join().await;
-// }

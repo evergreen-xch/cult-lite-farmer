@@ -21,7 +21,6 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::Mutex;
-use tokio::time::Instant;
 use tokio_tungstenite::tungstenite;
 use uuid::Uuid;
 
@@ -120,21 +119,7 @@ impl<'a> FarmerServer {
         .serve(make_service_fn(move |conn: &TlsStream| {
             let remote_addr = conn.remote_addr();
             let farmer = farmer_arc.clone();
-            let peer_id = {
-                let now = Instant::now();
-                let mut peer = None;
-                loop {
-                    if conn.peer_id().is_some() {
-                        peer = conn.peer_id();
-                        break;
-                    }
-                    if Instant::now().duration_since(now).as_secs() > 5 {
-                        break;
-                    }
-                }
-                peer
-            };
-            let peer_arc = Arc::new(peer_id.unwrap_or_default());
+            let peer_arc = conn.peer_id.clone();
             async move {
                 Ok::<_, Infallible>(service_fn(move |req| {
                     websocket_handler(remote_addr, peer_arc.clone(), req, farmer.clone())
@@ -162,13 +147,22 @@ impl<'a> FarmerServer {
 #[inline]
 async fn websocket_handler(
     addr: Option<SocketAddr>,
-    peer_id: Arc<Bytes32>,
+    peer_id: Arc<std::sync::Mutex<Option<Bytes32>>>,
     mut req: Request<Body>,
     farmer: Arc<Farmer>,
 ) -> Result<Response<Body>, tungstenite::error::Error> {
     if is_upgrade_request(&req) {
         let (response, websocket) = upgrade(&mut req, None)?;
         let addr = addr.ok_or_else(|| Error::new(ErrorKind::Other, "Invalid Peer"))?;
+        let peer_id = Arc::new(
+            peer_id
+                .lock()
+                .map_err(|e| {
+                    Error::new(ErrorKind::Other, format!("Failed ot lock peer_id: {:?}", e))
+                })?
+                .clone()
+                .ok_or_else(|| Error::new(ErrorKind::Other, "Invalid Peer"))?,
+        );
         tokio::spawn(async move {
             if let Err(e) = handle_connection(addr, peer_id.clone(), websocket, farmer).await {
                 error!("Error in websocket connection: {}", e);
@@ -193,7 +187,7 @@ async fn handle_connection(
     let handshake_handle = HandshakeHandle {
         id: handshake_handle_id,
         farmer: farmer.clone(),
-        peer_id: peer_id.as_ref().clone(),
+        peer_id: peer_id.clone(),
     };
     server
         .subscribe(

@@ -3,7 +3,6 @@ use crate::harvester::api::{
     HarvesterHandshakeHandle, NewSignagePointHarvesterHandle, RequestSignaturesHandle,
 };
 use crate::harvester::plot_manager::PlotManager;
-use crate::harvester::plot_sync::PlotSyncSender;
 use crate::harvester::server::HarvesterServer;
 use dg_xch_utils::clients::protocols::ProtocolMessageTypes;
 use dg_xch_utils::clients::websocket::harvester::HarvesterClient;
@@ -17,21 +16,18 @@ use uuid::Uuid;
 
 mod api;
 mod plot_manager;
-mod plot_sync;
 mod server;
 
 pub struct Harvester {
     config: Arc<Config>,
     plot_manager: Arc<Mutex<PlotManager>>,
-    _plot_sync_sender: Arc<Mutex<PlotSyncSender>>,
 }
 impl Harvester {
     pub fn new(config: Arc<Config>) -> Self {
         let manager_arc = Arc::new(Mutex::new(PlotManager::new(config.clone())));
         Self {
             config,
-            plot_manager: manager_arc.clone(),
-            _plot_sync_sender: Arc::new(Mutex::new(PlotSyncSender::new(manager_arc))),
+            plot_manager: manager_arc,
         }
     }
 

@@ -100,7 +100,7 @@ impl HarvesterServer {
         .serve(make_service_fn(move |conn: &TlsStream| {
             let remote_addr = conn.remote_addr();
             let config = config_arc.clone();
-            let peer_id = conn.peer_id();
+            let peer_id = conn.peer_id.clone();
             let peers = peers_arc.clone();
             async move {
                 Ok::<_, Infallible>(service_fn(move |req| {
@@ -134,7 +134,7 @@ impl HarvesterServer {
 
 async fn harvester_websocket_handler(
     addr: Option<SocketAddr>,
-    peer_id: Option<Bytes32>,
+    peer_id: Arc<std::sync::Mutex<Option<Bytes32>>>,
     mut req: Request<Body>,
     config: Arc<Config>,
     peers: Arc<Mutex<HashMap<Bytes32, Peer>>>,
@@ -142,8 +142,15 @@ async fn harvester_websocket_handler(
     if is_upgrade_request(&req) {
         let (response, websocket) = upgrade(&mut req, None)?;
         let addr = addr.ok_or_else(|| Error::new(ErrorKind::Other, "Invalid Peer"))?;
-        let peer_id =
-            Arc::new(peer_id.ok_or_else(|| Error::new(ErrorKind::Other, "Invalid Peer"))?);
+        let peer_id = Arc::new(
+            peer_id
+                .lock()
+                .map_err(|e| {
+                    Error::new(ErrorKind::Other, format!("Failed ot lock peer_id: {:?}", e))
+                })?
+                .clone()
+                .ok_or_else(|| Error::new(ErrorKind::Other, "Invalid Peer"))?,
+        );
         tokio::spawn(async move {
             if let Err(e) =
                 harvester_handle_connection(addr, peer_id, websocket, config, peers).await

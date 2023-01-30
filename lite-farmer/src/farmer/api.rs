@@ -453,12 +453,13 @@ impl MessageHandler for RespondSignaturesHandle {
 pub struct HandshakeHandle {
     pub id: Uuid,
     pub farmer: Arc<Farmer>,
-    pub peer_id: Bytes32,
+    pub peer_id: Arc<Bytes32>,
 }
 #[async_trait]
 impl MessageHandler for HandshakeHandle {
     async fn handle(&self, msg: Arc<ChiaMessage>) -> Result<(), Error> {
         let handshake = Handshake::from_bytes(&msg.data)?;
+        debug!("New Peer: {}", &self.peer_id);
         if let Some(peer) = self.farmer.peers.lock().await.get_mut(&self.peer_id) {
             let (network_id, server_port) = {
                 let cfg = self.farmer.config.lock().await;

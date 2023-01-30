@@ -8,7 +8,7 @@ use std::future::Future;
 use std::io::Error;
 use std::net::SocketAddr;
 use std::pin::Pin;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use tokio_rustls::rustls::ServerConfig;
 
@@ -19,6 +19,7 @@ enum State {
 
 pub struct TlsStream {
     state: State,
+    pub peer_id: Arc<Mutex<Option<Bytes32>>>,
 }
 
 impl TlsStream {
@@ -26,6 +27,7 @@ impl TlsStream {
         let accept = tokio_rustls::TlsAcceptor::from(config).accept(stream);
         TlsStream {
             state: State::Handshaking(accept),
+            peer_id: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -33,23 +35,6 @@ impl TlsStream {
         match &self.state {
             State::Handshaking(a) => a.get_ref().map(|a| a.remote_addr()),
             State::Streaming(s) => Some(s.get_ref().0.remote_addr()),
-        }
-    }
-
-    pub fn peer_id(&self) -> Option<Bytes32> {
-        match &self.state {
-            State::Handshaking(_) => None,
-            State::Streaming(s) => {
-                if let Some(certs) = s.get_ref().1.peer_certificates() {
-                    if !certs.is_empty() {
-                        Some(hash_256(&certs[0].0).into())
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
-            }
         }
     }
 }
@@ -64,6 +49,13 @@ impl AsyncRead for TlsStream {
         match pin.state {
             State::Handshaking(ref mut accept) => match ready!(Pin::new(accept).poll(cx)) {
                 Ok(mut stream) => {
+                    if let Ok(mut mutex) = pin.peer_id.lock() {
+                        if let Some(certs) = stream.get_ref().1.peer_certificates() {
+                            if !certs.is_empty() {
+                                *mutex = Some(hash_256(&certs[0].0).into());
+                            }
+                        }
+                    }
                     let result = Pin::new(&mut stream).poll_read(cx, buf);
                     pin.state = State::Streaming(stream);
                     result
@@ -86,6 +78,13 @@ impl AsyncWrite for TlsStream {
             State::Handshaking(ref mut accept) => match ready!(Pin::new(accept).poll(cx)) {
                 Ok(mut stream) => {
                     let result = Pin::new(&mut stream).poll_write(cx, buf);
+                    if let Ok(mut mutex) = pin.peer_id.lock() {
+                        if let Some(certs) = stream.get_ref().1.peer_certificates() {
+                            if !certs.is_empty() {
+                                *mutex = Some(hash_256(&certs[0].0).into());
+                            }
+                        }
+                    }
                     pin.state = State::Streaming(stream);
                     result
                 }
