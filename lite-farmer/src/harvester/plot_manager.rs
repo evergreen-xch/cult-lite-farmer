@@ -5,7 +5,7 @@ use dg_xch_utils::proof_of_space::prover::DiskProver;
 use dg_xch_utils::types::blockchain::proof_of_space::generate_plot_public_key;
 use dg_xch_utils::types::blockchain::sized_bytes::{Bytes32, Bytes48};
 use futures_util::future::join_all;
-use log::{error, info, trace, warn};
+use log::{debug, error, info, trace, warn};
 use std::collections::{HashMap, HashSet};
 use std::io::{Error, ErrorKind};
 use std::path::{Path, PathBuf};
@@ -55,7 +55,9 @@ impl PlotManager {
         !self.farmer_public_keys.is_empty() && !self.pool_public_keys.is_empty()
     }
     pub async fn load_plots(&mut self) -> Result<(), Error> {
+        debug!("Started Loading Plots");
         if !self.public_keys_available() {
+            debug!("No Public Keys Available");
             return Err(Error::new(
                 ErrorKind::NotFound,
                 format!(
@@ -65,6 +67,7 @@ impl PlotManager {
             ));
         }
         let farmer_public_keys = Arc::new(self.farmer_public_keys.clone());
+        debug!("Checking Plot Directories: {:?}", &self.config.harvester.plot_directories);
         for dir in &self.config.harvester.plot_directories {
             let plot_dir_path = Path::new(dir);
             if plot_dir_path.exists() {
@@ -73,6 +76,7 @@ impl PlotManager {
                     Ok((headers, failed)) => {
                         let plots: Arc<Mutex<HashMap<String, PlotInfo>>> = Default::default();
                         let missing: Arc<Mutex<Vec<PathBuf>>> = Default::default();
+                        info!("Plot Headres Processed: {}, Failed: {}", headers.len(), failed.len());
                         let failed: Arc<Mutex<Vec<PathBuf>>> = Arc::new(Mutex::new(failed));
                         let mut jobs = headers
                             .into_iter()

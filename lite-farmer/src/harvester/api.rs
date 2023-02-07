@@ -89,8 +89,14 @@ impl MessageHandler for HarvesterHandshakeHandle {
             .await
             .set_public_keys(handshake.farmer_public_keys, handshake.pool_public_keys);
         debug!("Set Key... Loading Plots");
-        self.plot_manager.lock().await.load_plots().await?;
-        debug!("Done Loading Plots");
+        match self.plot_manager.lock().await.load_plots().await {
+            Ok(_) => {
+                debug!("Done Loading Plots");
+            }
+            Err(e) => {
+                debug!("Error loading plots: {:?}", e);
+            }
+        }
         Ok(())
     }
 }
