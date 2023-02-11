@@ -67,7 +67,10 @@ impl PlotManager {
             ));
         }
         let farmer_public_keys = Arc::new(self.farmer_public_keys.clone());
-        debug!("Checking Plot Directories: {:?}", &self.config.harvester.plot_directories);
+        debug!(
+            "Checking Plot Directories: {:?}",
+            &self.config.harvester.plot_directories
+        );
         for dir in &self.config.harvester.plot_directories {
             let plot_dir_path = Path::new(dir);
             if plot_dir_path.exists() {
@@ -76,7 +79,11 @@ impl PlotManager {
                     Ok((headers, failed)) => {
                         let plots: Arc<Mutex<HashMap<String, PlotInfo>>> = Default::default();
                         let missing: Arc<Mutex<Vec<PathBuf>>> = Default::default();
-                        info!("Plot Headres Processed: {}, Failed: {}", headers.len(), failed.len());
+                        debug!(
+                            "Plot Headers Processed: {}, Failed: {}",
+                            headers.len(),
+                            failed.len()
+                        );
                         let failed: Arc<Mutex<Vec<PathBuf>>> = Arc::new(Mutex::new(failed));
                         let mut jobs = headers
                             .into_iter()

@@ -18,7 +18,7 @@ use std::io::{Error, ErrorKind};
 use std::net::{Ipv4Addr, SocketAddr};
 use std::str::FromStr;
 use std::sync::Arc;
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, Instant, SystemTime};
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::Mutex;
 use tokio_tungstenite::tungstenite;
@@ -132,9 +132,25 @@ impl<'a> FarmerServer {
         let server_handle = tokio::spawn(async {
             let _ = grace.await;
         });
+        let sp_farmer_arc = self.farmer.clone();
+        let mut last_clear = Instant::now();
         loop {
             if !*global_run.lock().await {
                 break;
+            }
+            let now = Instant::now();
+            if now.duration_since(last_clear).as_secs() > 60 * 60 * 16 {
+                let mut to_remove = vec![];
+                for (k, v) in sp_farmer_arc.cache_time.lock().await.iter() {
+                    if now.duration_since(*v).as_secs() > 60 * 60 * 12 {
+                        to_remove.push(k.clone());
+                    }
+                }
+                for b in to_remove {
+                    let _ = sp_farmer_arc.signage_points.lock().await.remove(&b);
+                    let _ = sp_farmer_arc.quality_to_identifiers.lock().await.remove(&b);
+                }
+                last_clear = now;
             }
             tokio::time::sleep(Duration::from_millis(500)).await;
         }
