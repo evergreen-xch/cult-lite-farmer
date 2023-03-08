@@ -3,3 +3,6 @@
 	url = git@github.com:GalactechsLLC/dg_xch_utils.git
 [submodule "dg_xch_utils/"]
 	branch = main
+[submodule "mozilla-ca"]
+	path = mozilla-ca
+	url = git@github.com:Chia-Network/mozilla-ca.git

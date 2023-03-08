@@ -51,13 +51,10 @@ impl PlotManager {
         self.farmer_public_keys = farmer_public_keys;
         self.pool_public_keys = pool_public_keys;
     }
-    pub fn public_keys_available(&self) -> bool {
-        !self.farmer_public_keys.is_empty() && !self.pool_public_keys.is_empty()
-    }
     pub async fn load_plots(&mut self) -> Result<(), Error> {
         debug!("Started Loading Plots");
-        if !self.public_keys_available() {
-            debug!("No Public Keys Available");
+        if self.farmer_public_keys.is_empty() {
+            error!("No Public Keys Available");
             return Err(Error::new(
                 ErrorKind::NotFound,
                 format!(
@@ -67,6 +64,7 @@ impl PlotManager {
             ));
         }
         let farmer_public_keys = Arc::new(self.farmer_public_keys.clone());
+        let pool_public_keys = Arc::new(self.pool_public_keys.clone());
         debug!(
             "Checking Plot Directories: {:?}",
             &self.config.harvester.plot_directories
@@ -78,7 +76,6 @@ impl PlotManager {
                 match read_all_plot_headers(plot_dir_path) {
                     Ok((headers, failed)) => {
                         let plots: Arc<Mutex<HashMap<String, PlotInfo>>> = Default::default();
-                        let missing: Arc<Mutex<Vec<PathBuf>>> = Default::default();
                         debug!(
                             "Plot Headers Processed: {}, Failed: {}",
                             headers.len(),
@@ -87,89 +84,90 @@ impl PlotManager {
                         let failed: Arc<Mutex<Vec<PathBuf>>> = Arc::new(Mutex::new(failed));
                         let mut jobs = headers
                             .into_iter()
-                            .map(|(path, header)| {
-                                let key_arc = farmer_public_keys.clone();
+                            .filter_map(|(path, header)| {
+                                if let Some(key) = &header.memo.pool_public_key {
+                                    if !pool_public_keys.contains(key) {
+                                        warn!("Missing Pool Key for Plot: {:?}", path);
+                                        self.plots_missing_keys.insert(path.to_path_buf());
+                                        return None;
+                                    }
+                                } else if !farmer_public_keys.contains(&header.memo.farmer_public_key) {
+                                    warn!("Missing Farmer Key for Plot: {:?}", path);
+                                    self.plots_missing_keys.insert(path.to_path_buf());
+                                    return None;
+                                }
                                 let plots_arc = plots.clone();
-                                let missing_arc = missing.clone();
                                 let failed_arc = failed.clone();
-                                tokio::spawn(async move {
+                                Some(tokio::spawn(async move {
                                     trace!("{:?}", header);
-                                    if key_arc.contains(&header.memo.farmer_public_key) {
-                                        match DiskProver::new(&path) {
-                                            Ok(prover) => {
-                                                let local_master_secret = prover
-                                                    .header
-                                                    .memo
-                                                    .local_master_secret_key
-                                                    .clone()
-                                                    .into();
-                                                let local_sk = match master_sk_to_local_sk(
-                                                    &local_master_secret,
-                                                ) {
-                                                    Ok(key) => key,
-                                                    Err(e) => {
-                                                        error!("Failed to load local secret key: {:?}", e);
-                                                        failed_arc.lock().await.push(path);
-                                                        return;
-                                                    }
-                                                };
-                                                match generate_plot_public_key(
-                                                    &local_sk.sk_to_pk(),
-                                                    &prover
-                                                            .header
-                                                            .memo
-                                                            .farmer_public_key
-                                                            .clone()
-                                                            .into(),
-                                                    prover
+                                    match DiskProver::new(&path) {
+                                        Ok(prover) => {
+                                            let local_master_secret = prover
+                                                .header
+                                                .memo
+                                                .local_master_secret_key
+                                                .clone()
+                                                .into();
+                                            let local_sk = match master_sk_to_local_sk(
+                                                &local_master_secret,
+                                            ) {
+                                                Ok(key) => key,
+                                                Err(e) => {
+                                                    error!("Failed to load local secret key: {:?}", e);
+                                                    failed_arc.lock().await.push(path);
+                                                    return;
+                                                }
+                                            };
+                                            match generate_plot_public_key(
+                                                &local_sk.sk_to_pk(),
+                                                &prover
                                                         .header
                                                         .memo
-                                                        .pool_contract_puzzle_hash
-                                                        .is_some(),
-                                                ) {
-                                                    Ok(plot_public_key) => {
-                                                        plots_arc.lock().await.insert(
-                                                            path.file_name()
-                                                                .map(|s| {
-                                                                    s.to_str().unwrap_or_default()
-                                                                })
-                                                                .unwrap_or_default()
-                                                                .to_string(),
-                                                            PlotInfo {
-                                                                prover,
-                                                                pool_public_key: header
-                                                                    .memo
-                                                                    .pool_public_key,
-                                                                pool_contract_puzzle_hash: header
-                                                                    .memo
-                                                                    .pool_contract_puzzle_hash,
-                                                                plot_public_key: plot_public_key
-                                                                    .to_bytes()
-                                                                    .into(),
-                                                                file_size: 0,
-                                                                time_modified: 0,
-                                                            },
-                                                        );
-                                                    }
-                                                    Err(e) => {
-                                                        error!("Failed to create plot public key: {:?}", e);
-                                                        failed_arc.lock().await.push(path);
-                                                    }
+                                                        .farmer_public_key
+                                                        .clone()
+                                                        .into(),
+                                                prover
+                                                    .header
+                                                    .memo
+                                                    .pool_contract_puzzle_hash
+                                                    .is_some(),
+                                            ) {
+                                                Ok(plot_public_key) => {
+                                                    plots_arc.lock().await.insert(
+                                                        path.file_name()
+                                                            .map(|s| {
+                                                                s.to_str().unwrap_or_default()
+                                                            })
+                                                            .unwrap_or_default()
+                                                            .to_string(),
+                                                        PlotInfo {
+                                                            prover,
+                                                            pool_public_key: header
+                                                                .memo
+                                                                .pool_public_key,
+                                                            pool_contract_puzzle_hash: header
+                                                                .memo
+                                                                .pool_contract_puzzle_hash,
+                                                            plot_public_key: plot_public_key
+                                                                .to_bytes()
+                                                                .into(),
+                                                            file_size: 0,
+                                                            time_modified: 0,
+                                                        },
+                                                    );
+                                                }
+                                                Err(e) => {
+                                                    error!("Failed to create plot public key: {:?}", e);
+                                                    failed_arc.lock().await.push(path);
                                                 }
                                             }
-                                            Err(e) => {
-                                                error!("Failed to create disk prover: {:?}", e);
-                                                failed_arc.lock().await.push(path);
-                                            }
                                         }
-                                    } else {
-                                        warn!(
-                                            "Missing Key for Plot: {}",
-                                            hex::encode(header.memo.farmer_public_key)
-                                        );
-                                        missing_arc.lock().await.push(path);
+                                        Err(e) => {
+                                            error!("Failed to create disk prover: {:?}", e);
+                                            failed_arc.lock().await.push(path);
+                                        }
                                     }
-                                })
+                                }))
                             })
                             .collect::<Vec<JoinHandle<()>>>();
                         let _ = join_all(&mut jobs).await;
@@ -197,18 +195,10 @@ impl PlotManager {
                             .iter()
                             .filter(|f| f.1.pool_contract_puzzle_hash.is_some())
                             .count();
-                        let plots_missing_keys = Arc::try_unwrap(missing)
-                            .map_err(|e| {
-                                Error::new(
-                                    ErrorKind::InvalidInput,
-                                    format!("Failed to extract value from Arc: {:?}", e),
-                                )
-                            })?
-                            .into_inner();
-                        info!("Loaded {} og plots and {} pooling plots, failed to load {}, missing keys for {}", og_count, pool_count, failed_to_open.len(), plots_missing_keys.len());
+
+                        info!("Loaded {} og plots and {} pooling plots, failed to load {}, missing keys for {}", og_count, pool_count, failed_to_open.len(), self.plots_missing_keys.len());
                         self.failed_to_open.extend(failed_to_open);
                         self.plots.extend(plots);
-                        self.plots_missing_keys.extend(plots_missing_keys);
                     }
                     Err(e) => {
                         error!("Failed to validate plot dir: {}, {:?}", dir, e);

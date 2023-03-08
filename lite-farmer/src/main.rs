@@ -3,20 +3,22 @@ use dg_xch_utils::clients::api::full_node::FullnodeAPI;
 use dg_xch_utils::clients::rpc::full_node::FullnodeClient;
 use dg_xch_utils::consensus::constants::{CONSENSUS_CONSTANTS_MAP, MAINNET};
 use dg_xch_utils::types::blockchain::sized_bytes::UnsizedBytes;
-use dg_xch_utils::utils::await_termination;
+use dg_xch_utils::utils::{await_termination, scrounge_for_plotnfts};
 use dialoguer::Confirm;
-use lite_farmer::config::Config;
+use lite_farmer::config::{Config, create_all_ssl};
 use lite_farmer::farmer::Farmer;
 use lite_farmer::harvester::Harvester;
 use log::{debug, error, info};
 use simple_logger::SimpleLogger;
-use std::io::Error;
-use std::path::PathBuf;
+use std::io::{Error, ErrorKind};
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::select;
 use tokio::sync::Mutex;
 use tokio::task::JoinSet;
+use dg_xch_utils::keys::{encode_puzzle_hash, key_from_mnemonic, master_sk_to_wallet_sk};
+use dg_xch_utils::wallet::puzzles::p2_delegated_puzzle_or_hidden_puzzle::puzzle_hash_for_pk;
 
 #[derive(Debug, Subcommand)]
 enum Action {
@@ -24,7 +26,14 @@ enum Action {
         #[arg(value_parser)]
         modes: Vec<RunMode>,
     },
-    Init,
+    Init {
+        #[arg(short, long)]
+        mnemonic: String,
+        ssl_path: Option<String>,
+        fullnode_host: String,
+        fullnode_port: u16,
+        fullnode_ssl: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, ValueEnum)]
@@ -187,7 +196,7 @@ async fn main() -> Result<(), Error> {
                 );
             }
         }
-        Action::Init {} => {
+        Action::Init {mnemonic, ssl_path, fullnode_host, fullnode_port, fullnode_ssl} => {
             let output_path = cli
                 .config
                 .unwrap_or_else(|| PathBuf::from("./farmer_config.yaml"));
@@ -202,8 +211,37 @@ async fn main() -> Result<(), Error> {
                 return Ok(());
             }
             let config = Config::default();
+            let master_key = key_from_mnemonic(&mnemonic)?;
+            let ssl_path = ssl_path.unwrap_or_else(|| String::from("./"));
+            let ssl_p = Path::new(&ssl_path);
+            create_all_ssl(ssl_p, true).await?;
+            let client = FullnodeClient::new(&fullnode_host, fullnode_port, fullnode_ssl);
+            let mut puzzle_hashes = vec![];
+            for index in 0..100 {
+                let wallet_sk = master_sk_to_wallet_sk(&master_key, index).map_err(|e| Error::new(ErrorKind::InvalidInput, format!("MasterKey: {:?}", e)))?;
+                puzzle_hashes.push(puzzle_hash_for_pk(&wallet_sk.sk_to_pk().to_bytes().into())?);
+            }
+            let plotnfs = scrounge_for_plotnfts(&client, &puzzle_hashes).await?;
             config.save_as_yaml(Some(output_path))?;
         }
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_mnemonic_plotnft_search() -> Result<(), Error> {
+    let master_key = key_from_mnemonic("")?;
+    let client = FullnodeClient::new("mainnet-chia-iriga.irulast.com", 443, None);
+    let mut puzzle_hashes = vec![];
+    for index in 0..5 {
+        let wallet_sk = master_sk_to_wallet_sk(&master_key, index).map_err(|e| Error::new(ErrorKind::InvalidInput, format!("MasterKey: {:?}", e)))?;
+        let ph = puzzle_hash_for_pk(&wallet_sk.sk_to_pk().to_bytes().into())?;
+        println!("Found: {:?}", encode_puzzle_hash(&ph, "xch")?);
+        puzzle_hashes.push(ph);
+    }
+    let plotnfs = scrounge_for_plotnfts(&client, &puzzle_hashes).await?;
+    for plotnft in plotnfs {
+        println!("Found: {:?}", plotnft);
     }
     Ok(())
 }

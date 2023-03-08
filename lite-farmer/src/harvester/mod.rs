@@ -7,7 +7,7 @@ use crate::harvester::server::HarvesterServer;
 use dg_xch_utils::clients::protocols::ProtocolMessageTypes;
 use dg_xch_utils::clients::websocket::harvester::HarvesterClient;
 use dg_xch_utils::clients::websocket::{ChiaMessageFilter, ChiaMessageHandler, Websocket};
-use log::debug;
+use log::{debug, info};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc::Receiver;
@@ -74,6 +74,7 @@ impl Harvester {
                     continue;
                 }
             };
+            info!("Harvester Client Started");
 
             let harvester_handshake_handle_id = Uuid::new_v4();
             let harvester_handshake_handle = Arc::new(HarvesterHandshakeHandle {
