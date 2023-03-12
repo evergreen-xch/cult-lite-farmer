@@ -1,20 +1,20 @@
 pub mod tls;
 
 use dg_xch_utils::types::blockchain::sized_bytes::{Bytes32, Bytes48};
-use std::{fs};
-use std::fs::OpenOptions;
-use std::io::{Error, ErrorKind, Write};
-use std::ops::Sub;
-use std::path::{Path, PathBuf};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use openssl::asn1::{Asn1Time};
+use openssl::asn1::Asn1Time;
 use openssl::bn::{BigNum, MsbOption};
 use openssl::error::ErrorStack;
 use openssl::hash::MessageDigest;
 use openssl::pkey::PKey;
 use openssl::rsa::Rsa;
-use openssl::x509::{X509, X509Builder, X509NameBuilder};
 use openssl::x509::extension::{BasicConstraints, SubjectAlternativeName};
+use openssl::x509::{X509Builder, X509NameBuilder, X509};
+use std::fs;
+use std::fs::OpenOptions;
+use std::io::{Error, ErrorKind, Write};
+use std::ops::Sub;
+use std::path::{Path, PathBuf};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::fs::create_dir_all;
 
 const CHIA_CA_CRT: &str = "-----BEGIN CERTIFICATE-----
@@ -148,18 +148,18 @@ impl Config {
     pub fn new() -> Self {
         Default::default()
     }
-    pub fn save_as_yaml<P: AsRef<Path>>(&self, path: Option<P>) -> Result<(), std::io::Error> {
+    pub fn save_as_yaml<P: AsRef<Path>>(&self, path: Option<P>) -> Result<(), Error> {
         if let Some(p) = path {
             fs::write(
                 p.as_ref(),
                 serde_yaml::to_string(&self)
-                    .map_err(|e| std::io::Error::new(ErrorKind::Other, format!("{:?}", e)))?,
+                    .map_err(|e| Error::new(ErrorKind::Other, format!("{:?}", e)))?,
             )
         } else {
             fs::write(
                 self.path.as_path(),
                 serde_yaml::to_string(&self)
-                    .map_err(|e| std::io::Error::new(ErrorKind::Other, format!("{:?}", e)))?,
+                    .map_err(|e| Error::new(ErrorKind::Other, format!("{:?}", e)))?,
             )
         }
     }
@@ -247,41 +247,62 @@ impl Default for Config {
     }
 }
 impl TryFrom<&Path> for Config {
-    type Error = std::io::Error;
+    type Error = Error;
     fn try_from(value: &Path) -> Result<Self, Self::Error> {
         serde_yaml::from_str::<Config>(&fs::read_to_string(value)?)
-            .map_err(|e| std::io::Error::new(ErrorKind::Other, format!("{:?}", e)))
+            .map_err(|e| Error::new(ErrorKind::Other, format!("{:?}", e)))
     }
 }
 impl TryFrom<&PathBuf> for Config {
-    type Error = std::io::Error;
+    type Error = Error;
     fn try_from(value: &PathBuf) -> Result<Self, Self::Error> {
         Self::try_from(value.as_path())
     }
 }
 
-pub fn generate_ca_signed_cert(cert_path: &Path, cert_data: &[u8], key_path: &Path, key_data: &[u8]) -> Result<(Vec<u8>, Vec<u8>), Error> {
-    let (key_data, cert_data) = generate_ca_signed_cert_data(cert_data, key_data).map_err(|e| Error::new(ErrorKind::Other, format!("OpenSSL Errors: {:?}", e)))?;
+pub fn generate_ca_signed_cert(
+    cert_path: &Path,
+    cert_data: &[u8],
+    key_path: &Path,
+    key_data: &[u8],
+) -> Result<(Vec<u8>, Vec<u8>), Error> {
+    let (key_data, cert_data) = generate_ca_signed_cert_data(cert_data, key_data)
+        .map_err(|e| Error::new(ErrorKind::Other, format!("OpenSSL Errors: {:?}", e)))?;
     write_ssl_cert_and_key(cert_path, &cert_data, key_path, &key_data, true)?;
     Ok((key_data, cert_data))
 }
 
-fn write_ssl_cert_and_key(cert_path: &Path, cert_data: &[u8], key_path: &Path, key_data: &[u8], overwrite: bool) -> Result<(), Error> {
+fn write_ssl_cert_and_key(
+    cert_path: &Path,
+    cert_data: &[u8],
+    key_path: &Path,
+    key_data: &[u8],
+    overwrite: bool,
+) -> Result<(), Error> {
     if cert_path.exists() && overwrite {
         fs::remove_file(cert_path)?;
     }
-    let mut crt = OpenOptions::new().write(true).create_new(true).open(cert_path)?;
-    crt.write(cert_data)?;
+    let mut crt = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(cert_path)?;
+    crt.write_all(cert_data)?;
     crt.flush()?;
     if key_path.exists() && overwrite {
         fs::remove_file(key_path)?;
     }
-    let mut key = OpenOptions::new().write(true).create_new(true).open(key_path)?;
-    key.write(key_data)?;
+    let mut key = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(key_path)?;
+    key.write_all(key_data)?;
     key.flush()
 }
 
-fn generate_ca_signed_cert_data(cert_data: &[u8], key_data: &[u8]) -> Result<(Vec<u8>, Vec<u8>), ErrorStack> {
+fn generate_ca_signed_cert_data(
+    cert_data: &[u8],
+    key_data: &[u8],
+) -> Result<(Vec<u8>, Vec<u8>), ErrorStack> {
     let root_cert = X509::from_pem(cert_data)?;
     let root_key = PKey::from_rsa(Rsa::private_key_from_pem(key_data)?)?;
     let cert_key = Rsa::generate(2048)?;
@@ -289,7 +310,9 @@ fn generate_ca_signed_cert_data(cert_data: &[u8], key_data: &[u8]) -> Result<(Ve
     let mut cert = X509Builder::new()?;
     let mut x509_name = X509NameBuilder::new()?;
     x509_name.append_entry_by_text("O", "Chia").unwrap();
-    x509_name.append_entry_by_text("OU", "Organic Farming Division").unwrap();
+    x509_name
+        .append_entry_by_text("OU", "Organic Farming Division")
+        .unwrap();
     x509_name.append_entry_by_text("CN", "Chia").unwrap();
     let name = x509_name.build();
     cert.set_subject_name(name.as_ref())?;
@@ -298,7 +321,16 @@ fn generate_ca_signed_cert_data(cert_data: &[u8], key_data: &[u8]) -> Result<(Ve
     let mut bn = BigNum::new()?;
     bn.rand(32, MsbOption::MAYBE_ZERO, true)?;
     cert.set_serial_number(bn.to_asn1_integer()?.as_ref())?;
-    cert.set_not_before(Asn1Time::from_unix(SystemTime::now().sub(Duration::from_secs(60 * 60 * 24)).duration_since(UNIX_EPOCH).expect("Should be later than Epoch").as_secs() as i64)?.as_ref())?;
+    cert.set_not_before(
+        Asn1Time::from_unix(
+            SystemTime::now()
+                .sub(Duration::from_secs(60 * 60 * 24))
+                .duration_since(UNIX_EPOCH)
+                .expect("Should be later than Epoch")
+                .as_secs() as i64,
+        )?
+        .as_ref(),
+    )?;
     cert.set_not_after(Asn1Time::from_str_x509("210008020000000")?.as_ref())?;
     let ctx = cert.x509v3_context(Some(root_cert.as_ref()), None);
     let san = SubjectAlternativeName::new().dns("chia.net").build(&ctx)?;
@@ -309,7 +341,8 @@ fn generate_ca_signed_cert_data(cert_data: &[u8], key_data: &[u8]) -> Result<(Ve
 }
 
 pub fn make_ca_cert(cert_path: &Path, key_path: &Path) -> Result<(Vec<u8>, Vec<u8>), Error> {
-    let (key_data, cert_data) = make_ca_cert_data().map_err(|e| Error::new(ErrorKind::Other, format!("OpenSSL Errors: {:?}", e)))?;
+    let (key_data, cert_data) = make_ca_cert_data()
+        .map_err(|e| Error::new(ErrorKind::Other, format!("OpenSSL Errors: {:?}", e)))?;
     write_ssl_cert_and_key(cert_path, &cert_data, key_path, &key_data, true)?;
     Ok((key_data, cert_data))
 }
@@ -318,7 +351,9 @@ fn make_ca_cert_data() -> Result<(Vec<u8>, Vec<u8>), ErrorStack> {
     let root_key = PKey::from_rsa(Rsa::generate(2048)?)?;
     let mut x509_name = X509NameBuilder::new()?;
     x509_name.append_entry_by_text("O", "Chia").unwrap();
-    x509_name.append_entry_by_text("OU", "Organic Farming Division").unwrap();
+    x509_name
+        .append_entry_by_text("OU", "Organic Farming Division")
+        .unwrap();
     x509_name.append_entry_by_text("CN", "Chia").unwrap();
     let mut cert = X509Builder::new()?;
     let name = x509_name.build();
@@ -348,7 +383,14 @@ const ALL_PRIVATE_NODE_NAMES: [&str; 8] = [
     "daemon",
 ];
 
-const ALL_PUBLIC_NODE_NAMES: [&str; 6] = ["full_node", "wallet", "farmer", "introducer", "timelord", "data_layer"];
+const ALL_PUBLIC_NODE_NAMES: [&str; 6] = [
+    "full_node",
+    "wallet",
+    "farmer",
+    "introducer",
+    "timelord",
+    "data_layer",
+];
 
 pub async fn create_all_ssl(root_path: &Path, overwrite: bool) -> Result<(), Error> {
     let ssl_dir = root_path.join(Path::new("/ssl/"));
@@ -358,11 +400,20 @@ pub async fn create_all_ssl(root_path: &Path, overwrite: bool) -> Result<(), Err
     let private_ca_crt_path = ca_dir.join("private_ca.crt");
     let chia_ca_crt_path = ca_dir.join("chia_ca.crt");
     let chia_ca_key_path = ca_dir.join("chia_ca.key");
-    write_ssl_cert_and_key(&chia_ca_crt_path, CHIA_CA_CRT.as_bytes(), &chia_ca_key_path, CHIA_CA_KEY.as_bytes(), true)?;
-    let (key,crt) = if !private_ca_crt_path.exists() || !private_ca_key_path.exists() {
+    write_ssl_cert_and_key(
+        &chia_ca_crt_path,
+        CHIA_CA_CRT.as_bytes(),
+        &chia_ca_key_path,
+        CHIA_CA_KEY.as_bytes(),
+        true,
+    )?;
+    let (key, crt) = if !private_ca_crt_path.exists() || !private_ca_key_path.exists() {
         make_ca_cert(&private_ca_crt_path, &private_ca_key_path)?
     } else {
-        (fs::read(private_ca_key_path)?, fs::read(private_ca_crt_path)?)
+        (
+            fs::read(private_ca_key_path)?,
+            fs::read(private_ca_crt_path)?,
+        )
     };
     generate_ssl_for_nodes(
         &ssl_dir,
@@ -371,7 +422,8 @@ pub async fn create_all_ssl(root_path: &Path, overwrite: bool) -> Result<(), Err
         "private",
         &ALL_PRIVATE_NODE_NAMES,
         overwrite,
-    ).await?;
+    )
+    .await?;
     generate_ssl_for_nodes(
         &ssl_dir,
         CHIA_CA_CRT.as_bytes(),
@@ -379,20 +431,27 @@ pub async fn create_all_ssl(root_path: &Path, overwrite: bool) -> Result<(), Err
         "public",
         &ALL_PUBLIC_NODE_NAMES,
         false,
-    ).await
+    )
+    .await
 }
 
-async fn generate_ssl_for_nodes(ssl_dir: &Path, crt: &[u8], key: &[u8], prefix: &str, nodes: &[&str], overwrite: bool) -> Result<(), Error> {
+async fn generate_ssl_for_nodes(
+    ssl_dir: &Path,
+    crt: &[u8],
+    key: &[u8],
+    prefix: &str,
+    nodes: &[&str],
+    overwrite: bool,
+) -> Result<(), Error> {
     for node_name in nodes {
         let node_dir = ssl_dir.join(Path::new(*node_name));
         create_dir_all(&node_dir).await?;
         let key_path = node_dir.join(Path::new(&format!("{prefix}_{node_name}.key")));
         let crt_path = node_dir.join(Path::new(&format!("{prefix}_{node_name}.crt")));
         if key_path.exists() && crt_path.exists() && !overwrite {
-            continue
+            continue;
         }
         generate_ca_signed_cert(&crt_path, crt, &key_path, key)?;
     }
     Ok(())
 }
-

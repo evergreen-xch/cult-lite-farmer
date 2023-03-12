@@ -88,12 +88,14 @@ impl PlotManager {
                                 if let Some(key) = &header.memo.pool_public_key {
                                     if !pool_public_keys.contains(key) {
                                         warn!("Missing Pool Key for Plot: {:?}", path);
-                                        self.plots_missing_keys.insert(path.to_path_buf());
+                                        self.plots_missing_keys.insert(path);
                                         return None;
                                     }
-                                } else if !farmer_public_keys.contains(&header.memo.farmer_public_key) {
+                                } else if !farmer_public_keys
+                                    .contains(&header.memo.farmer_public_key)
+                                {
                                     warn!("Missing Farmer Key for Plot: {:?}", path);
-                                    self.plots_missing_keys.insert(path.to_path_buf());
+                                    self.plots_missing_keys.insert(path);
                                     return None;
                                 }
                                 let plots_arc = plots.clone();
@@ -108,24 +110,26 @@ impl PlotManager {
                                                 .local_master_secret_key
                                                 .clone()
                                                 .into();
-                                            let local_sk = match master_sk_to_local_sk(
-                                                &local_master_secret,
-                                            ) {
-                                                Ok(key) => key,
-                                                Err(e) => {
-                                                    error!("Failed to load local secret key: {:?}", e);
-                                                    failed_arc.lock().await.push(path);
-                                                    return;
-                                                }
-                                            };
+                                            let local_sk =
+                                                match master_sk_to_local_sk(&local_master_secret) {
+                                                    Ok(key) => key,
+                                                    Err(e) => {
+                                                        error!(
+                                                            "Failed to load local secret key: {:?}",
+                                                            e
+                                                        );
+                                                        failed_arc.lock().await.push(path);
+                                                        return;
+                                                    }
+                                                };
                                             match generate_plot_public_key(
                                                 &local_sk.sk_to_pk(),
                                                 &prover
-                                                        .header
-                                                        .memo
-                                                        .farmer_public_key
-                                                        .clone()
-                                                        .into(),
+                                                    .header
+                                                    .memo
+                                                    .farmer_public_key
+                                                    .clone()
+                                                    .into(),
                                                 prover
                                                     .header
                                                     .memo
@@ -135,9 +139,7 @@ impl PlotManager {
                                                 Ok(plot_public_key) => {
                                                     plots_arc.lock().await.insert(
                                                         path.file_name()
-                                                            .map(|s| {
-                                                                s.to_str().unwrap_or_default()
-                                                            })
+                                                            .map(|s| s.to_str().unwrap_or_default())
                                                             .unwrap_or_default()
                                                             .to_string(),
                                                         PlotInfo {
@@ -157,7 +159,10 @@ impl PlotManager {
                                                     );
                                                 }
                                                 Err(e) => {
-                                                    error!("Failed to create plot public key: {:?}", e);
+                                                    error!(
+                                                        "Failed to create plot public key: {:?}",
+                                                        e
+                                                    );
                                                     failed_arc.lock().await.push(path);
                                                 }
                                             }
