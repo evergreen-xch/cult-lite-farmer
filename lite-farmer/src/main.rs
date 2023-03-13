@@ -2,15 +2,19 @@ use clap::{Parser, Subcommand, ValueEnum};
 use dg_xch_utils::clients::api::full_node::FullnodeAPI;
 use dg_xch_utils::clients::rpc::full_node::FullnodeClient;
 use dg_xch_utils::consensus::constants::{CONSENSUS_CONSTANTS_MAP, MAINNET};
+use dg_xch_utils::keys::{
+    encode_puzzle_hash, key_from_mnemonic, master_sk_to_wallet_sk_unhardened,
+};
 use dg_xch_utils::types::blockchain::sized_bytes::UnsizedBytes;
-use dg_xch_utils::utils::await_termination;
+use dg_xch_utils::utils::{await_termination, scrounge_for_plotnfts};
+use dg_xch_utils::wallet::puzzles::p2_delegated_puzzle_or_hidden_puzzle::puzzle_hash_for_pk;
 use dialoguer::Confirm;
-use lite_farmer::config::Config;
+use lite_farmer::config::{Config, Peer, PoolWalletConfig};
 use lite_farmer::farmer::Farmer;
 use lite_farmer::harvester::Harvester;
 use log::{debug, error, info};
 use simple_logger::SimpleLogger;
-use std::io::Error;
+use std::io::{Error, ErrorKind};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -24,7 +28,16 @@ enum Action {
         #[arg(value_parser)]
         modes: Vec<RunMode>,
     },
-    Init,
+    Init {
+        #[arg(short, long)]
+        mnemonic: String,
+        #[arg(short = 'f', long)]
+        fullnode_host: String,
+        #[arg(short = 'p', long)]
+        fullnode_port: u16,
+        #[arg(short = 's', long)]
+        fullnode_ssl: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, ValueEnum)]
@@ -187,7 +200,12 @@ async fn main() -> Result<(), Error> {
                 );
             }
         }
-        Action::Init {} => {
+        Action::Init {
+            mnemonic,
+            fullnode_host,
+            fullnode_port,
+            fullnode_ssl,
+        } => {
             let output_path = cli
                 .config
                 .unwrap_or_else(|| PathBuf::from("./farmer_config.yaml"));
@@ -201,7 +219,70 @@ async fn main() -> Result<(), Error> {
             {
                 return Ok(());
             }
-            let config = Config::default();
+            let mut config = Config::default();
+            let master_key = key_from_mnemonic(&mnemonic)?;
+            match &fullnode_ssl {
+                None => {
+                    config.farmer.remote_full_node_peer.host = fullnode_host.clone();
+                    config.farmer.remote_full_node_peer.port = fullnode_port;
+                }
+                Some(root_path) => {
+                    config.farmer.local_full_node_peer = Some(Peer {
+                        host: fullnode_host.clone(),
+                        port: fullnode_port,
+                    });
+                    config.farmer.ssl.root_path = root_path.clone();
+                }
+            }
+
+            // let owner_key = master_sk_to_singleton_owner_sk(&master_key).map_err(|e| {
+            //     Error::new(
+            //         ErrorKind::InvalidInput,
+            //         format!("Failed to parse Owner Key: {:?}", e),
+            //     )
+            // })?;
+
+            let client = FullnodeClient::new(&fullnode_host, fullnode_port, fullnode_ssl);
+            let mut puzzle_hashes = vec![];
+            let first_sk = master_sk_to_wallet_sk_unhardened(&master_key, 0).map_err(|e| {
+                Error::new(
+                    ErrorKind::InvalidInput,
+                    format!("Failed to parse Wallet SK: {:?}", e),
+                )
+            })?;
+            let payout_address = puzzle_hash_for_pk(&first_sk.sk_to_pk().to_bytes().into())?;
+            puzzle_hashes.push(payout_address.clone());
+            for index in 1..100 {
+                let wallet_sk =
+                    master_sk_to_wallet_sk_unhardened(&master_key, index).map_err(|e| {
+                        Error::new(
+                            ErrorKind::InvalidInput,
+                            format!("Failed to parse Wallet SK: {:?}", e),
+                        )
+                    })?;
+                let ph = puzzle_hash_for_pk(&wallet_sk.sk_to_pk().to_bytes().into())?;
+                puzzle_hashes.push(ph);
+            }
+            let plotnfs = scrounge_for_plotnfts(&client, &puzzle_hashes).await?;
+            for plot_nft in plotnfs {
+                config.pool_list.push(PoolWalletConfig {
+                    launcher_id: plot_nft.launcher_id,
+                    pool_url: plot_nft.pool_state.pool_url,
+                    payout_instructions: encode_puzzle_hash(&payout_address, "xch").map_err(
+                        |e| {
+                            Error::new(
+                                ErrorKind::InvalidInput,
+                                format!("Failed to Encode Puzzle hash: {:?}", e),
+                            )
+                        },
+                    )?,
+                    target_puzzle_hash: plot_nft.pool_state.target_puzzle_hash,
+                    p2_singleton_puzzle_hash: plot_nft.singleton_coin.coin.puzzle_hash,
+                    owner_public_key: plot_nft.pool_state.owner_pubkey,
+                });
+            }
+
+            //add nft to config
             config.save_as_yaml(Some(output_path))?;
         }
     }
