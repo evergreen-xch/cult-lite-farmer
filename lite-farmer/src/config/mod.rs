@@ -195,25 +195,26 @@ impl Default for Config {
                         private_key: "ca/private_ca.key".to_string(),
                     },
                 },
-                farming_info: vec![FarmingInfo {
-                    farmer_secret_key: "YOUR SECRET KEY HERE".to_string(),
-                    launcher_id: Some(
-                        "If Using a PlotNFT put YOUR LAUNCHER ID HERE, otherwise leave blank"
-                            .to_string(),
-                    ),
-                    pool_secret_key: Some(
-                        "If Using a OG Plot, otherwise leave blank, YOUR POOL SECRET KEY"
-                            .to_string(),
-                    ),
-                    owner_secret_key: Some(
-                        "If Using a PlotNFT put YOUR OWNER SECRET KEY, otherwise leave blank"
-                            .to_string(),
-                    ),
-                    auth_secret_key: Some(
-                        "If Using a PlotNFT put YOUR AUTH SECRET KEY, otherwise leave blank"
-                            .to_string(),
-                    ),
-                }],
+                farming_info: vec![],
+                // farming_info: vec![FarmingInfo {
+                //     farmer_secret_key: "YOUR SECRET KEY HERE".to_string(),
+                //     launcher_id: Some(
+                //         "If Using a PlotNFT put YOUR LAUNCHER ID HERE, otherwise leave blank"
+                //             .to_string(),
+                //     ),
+                //     pool_secret_key: Some(
+                //         "If Using a OG Plot, otherwise leave blank, YOUR POOL SECRET KEY"
+                //             .to_string(),
+                //     ),
+                //     owner_secret_key: Some(
+                //         "If Using a PlotNFT put YOUR OWNER SECRET KEY, otherwise leave blank"
+                //             .to_string(),
+                //     ),
+                //     auth_secret_key: Some(
+                //         "If Using a PlotNFT put YOUR AUTH SECRET KEY, otherwise leave blank"
+                //             .to_string(),
+                //     ),
+                // }],
                 xch_target_address: "YOUR PAYOUT ADDRESS HERE".to_string(),
             },
             harvester: HarvesterConfig {
