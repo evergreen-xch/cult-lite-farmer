@@ -170,21 +170,21 @@ impl Default for Config {
             worker_name: "lite-farmer".to_string(),
             selected_network: "mainnet".to_string(),
             farmer: FarmerConfig {
-                host: "127.0.0.1".to_string(),
+                host: "localhost".to_string(),
                 port: 8447,
                 local_full_node_peer: Some(Peer {
-                    host: "127.0.0.1".to_string(),
+                    host: "localhost".to_string(),
                     port: 8444,
                 }),
                 remote_full_node_peer: Peer {
-                    host: "127.0.0.1".to_string(),
+                    host: "localhost".to_string(),
                     port: 8444,
                 },
                 ssl: SslInfo {
                     root_path: "./ssl/".to_string(),
                     certs: SslCertInfo {
-                        public_crt: None,
-                        public_key: None,
+                        public_crt: Some("farmer/public_farmer.crt".to_string()),
+                        public_key: Some("farmer/public_farmer.key".to_string()),
                         private_crt: "farmer/private_farmer.crt".to_string(),
                         private_key: "farmer/private_farmer.key".to_string(),
                     },
@@ -218,10 +218,10 @@ impl Default for Config {
                 xch_target_address: "YOUR PAYOUT ADDRESS HERE".to_string(),
             },
             harvester: HarvesterConfig {
-                host: "127.0.0.1".to_string(),
+                host: "localhost".to_string(),
                 port: 8448,
                 farmer_peer: Peer {
-                    host: "127.0.0.1".to_string(),
+                    host: "localhost".to_string(),
                     port: 8447,
                 },
                 ssl: SslInfo {
@@ -394,7 +394,7 @@ const ALL_PUBLIC_NODE_NAMES: [&str; 6] = [
 ];
 
 pub async fn create_all_ssl(root_path: &Path, overwrite: bool) -> Result<(), Error> {
-    let ssl_dir = root_path.join(Path::new("/ssl/"));
+    let ssl_dir = root_path.join(Path::new("./ssl/"));
     let ca_dir = ssl_dir.join(Path::new("/ca/"));
     create_dir_all(&ca_dir).await?;
     let private_ca_key_path = ca_dir.join("private_ca.key");
