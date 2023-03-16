@@ -227,14 +227,23 @@ async fn main() -> Result<(), Error> {
             match &fullnode_ssl {
                 None => {
                     config.farmer.remote_full_node_peer.host = fullnode_host.clone();
-                    config.farmer.remote_full_node_peer.port = fullnode_port;
+                    config.farmer.remote_full_node_peer.port = if fullnode_port == 8555 {
+                        8444
+                    } else {
+                        fullnode_port
+                    };
                 }
                 Some(root_path) => {
                     config.farmer.local_full_node_peer = Some(Peer {
                         host: fullnode_host.clone(),
-                        port: fullnode_port,
+                        port: if fullnode_port == 8555 {
+                            8444
+                        } else {
+                            fullnode_port
+                        },
                     });
                     config.farmer.ssl.root_path = root_path.clone();
+                    config.harvester.ssl.root_path = root_path.clone();
                 }
             }
             let client = FullnodeClient::new(&fullnode_host, fullnode_port, fullnode_ssl);

@@ -3,3 +3,4 @@
 target
 *.tar
 farmer_config.yaml
+/farmer_config.yaml.bak
