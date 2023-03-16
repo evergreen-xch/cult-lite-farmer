@@ -3,13 +3,16 @@ use dg_xch_utils::clients::api::full_node::FullnodeAPI;
 use dg_xch_utils::clients::rpc::full_node::FullnodeClient;
 use dg_xch_utils::consensus::constants::{CONSENSUS_CONSTANTS_MAP, MAINNET};
 use dg_xch_utils::keys::{
-    encode_puzzle_hash, key_from_mnemonic, master_sk_to_wallet_sk_unhardened,
+    encode_puzzle_hash, key_from_mnemonic, master_sk_to_farmer_sk, master_sk_to_pool_sk,
+    master_sk_to_pooling_authentication_sk, master_sk_to_singleton_owner_sk,
+    master_sk_to_wallet_sk_unhardened,
 };
-use dg_xch_utils::types::blockchain::sized_bytes::UnsizedBytes;
+use dg_xch_utils::types::blockchain::sized_bytes::{Bytes48, UnsizedBytes};
+use dg_xch_utils::utils::clvm_puzzles::launcher_id_to_p2_puzzle_hash;
 use dg_xch_utils::utils::{await_termination, scrounge_for_plotnfts};
 use dg_xch_utils::wallet::puzzles::p2_delegated_puzzle_or_hidden_puzzle::puzzle_hash_for_pk;
 use dialoguer::Confirm;
-use lite_farmer::config::{Config, Peer, PoolWalletConfig};
+use lite_farmer::config::{Config, FarmingInfo, Peer, PoolWalletConfig};
 use lite_farmer::farmer::Farmer;
 use lite_farmer::harvester::Harvester;
 use log::{debug, error, info};
@@ -224,35 +227,28 @@ async fn main() -> Result<(), Error> {
             match &fullnode_ssl {
                 None => {
                     config.farmer.remote_full_node_peer.host = fullnode_host.clone();
-                    config.farmer.remote_full_node_peer.port = fullnode_port;
+                    config.farmer.remote_full_node_peer.port = if fullnode_port == 8555 {
+                        8444
+                    } else {
+                        fullnode_port
+                    };
                 }
                 Some(root_path) => {
                     config.farmer.local_full_node_peer = Some(Peer {
                         host: fullnode_host.clone(),
-                        port: fullnode_port,
+                        port: if fullnode_port == 8555 {
+                            8444
+                        } else {
+                            fullnode_port
+                        },
                     });
                     config.farmer.ssl.root_path = root_path.clone();
+                    config.harvester.ssl.root_path = root_path.clone();
                 }
             }
-
-            // let owner_key = master_sk_to_singleton_owner_sk(&master_key).map_err(|e| {
-            //     Error::new(
-            //         ErrorKind::InvalidInput,
-            //         format!("Failed to parse Owner Key: {:?}", e),
-            //     )
-            // })?;
-
             let client = FullnodeClient::new(&fullnode_host, fullnode_port, fullnode_ssl);
             let mut puzzle_hashes = vec![];
-            let first_sk = master_sk_to_wallet_sk_unhardened(&master_key, 0).map_err(|e| {
-                Error::new(
-                    ErrorKind::InvalidInput,
-                    format!("Failed to parse Wallet SK: {:?}", e),
-                )
-            })?;
-            let payout_address = puzzle_hash_for_pk(&first_sk.sk_to_pk().to_bytes().into())?;
-            puzzle_hashes.push(payout_address.clone());
-            for index in 1..100 {
+            for index in 0..100 {
                 let wallet_sk =
                     master_sk_to_wallet_sk_unhardened(&master_key, index).map_err(|e| {
                         Error::new(
@@ -263,25 +259,68 @@ async fn main() -> Result<(), Error> {
                 let ph = puzzle_hash_for_pk(&wallet_sk.sk_to_pk().to_bytes().into())?;
                 puzzle_hashes.push(ph);
             }
+            config.farmer.xch_target_address = encode_puzzle_hash(&puzzle_hashes[1], "xch")?;
             let plotnfs = scrounge_for_plotnfts(&client, &puzzle_hashes).await?;
             for plot_nft in plotnfs {
                 config.pool_list.push(PoolWalletConfig {
-                    launcher_id: plot_nft.launcher_id,
+                    launcher_id: plot_nft.launcher_id.clone(),
                     pool_url: plot_nft.pool_state.pool_url,
-                    payout_instructions: encode_puzzle_hash(&payout_address, "xch").map_err(
-                        |e| {
-                            Error::new(
-                                ErrorKind::InvalidInput,
-                                format!("Failed to Encode Puzzle hash: {:?}", e),
-                            )
-                        },
-                    )?,
+                    payout_instructions: puzzle_hashes[1].as_str.clone(),
                     target_puzzle_hash: plot_nft.pool_state.target_puzzle_hash,
-                    p2_singleton_puzzle_hash: plot_nft.singleton_coin.coin.puzzle_hash,
-                    owner_public_key: plot_nft.pool_state.owner_pubkey,
+                    p2_singleton_puzzle_hash: launcher_id_to_p2_puzzle_hash(
+                        &plot_nft.launcher_id,
+                        plot_nft.delay_time as u64,
+                        &plot_nft.delay_puzzle_hash,
+                    )?,
+                    owner_public_key: plot_nft.pool_state.owner_pubkey.clone(),
                 });
+                let mut owner_key = None;
+                let mut auth_key = None;
+                for i in 0..21 {
+                    let pub_key = Bytes48::from(
+                        master_sk_to_singleton_owner_sk(&master_key, i)
+                            .unwrap()
+                            .sk_to_pk()
+                            .to_bytes(),
+                    );
+                    if pub_key == plot_nft.pool_state.owner_pubkey {
+                        owner_key = Some(hex::encode(
+                            master_sk_to_singleton_owner_sk(&master_key, i)?.to_bytes(),
+                        ));
+                        auth_key = Some(hex::encode(
+                            master_sk_to_pooling_authentication_sk(&master_key, i, 20)?.to_bytes(),
+                        ));
+                        break;
+                    }
+                }
+                if let Some(info) = config.farmer.farming_info.iter_mut().find(|f| {
+                    if let Some(l) = &f.launcher_id {
+                        *l == plot_nft.launcher_id.as_str
+                    } else {
+                        false
+                    }
+                }) {
+                    info.farmer_secret_key =
+                        hex::encode(master_sk_to_farmer_sk(&master_key)?.to_bytes());
+                    info.launcher_id = Some(plot_nft.launcher_id.as_str);
+                    info.owner_secret_key = owner_key;
+                    info.auth_secret_key = auth_key;
+                    info.pool_secret_key =
+                        Some(hex::encode(master_sk_to_pool_sk(&master_key)?.to_bytes()));
+                } else {
+                    config.farmer.farming_info.push(FarmingInfo {
+                        farmer_secret_key: hex::encode(
+                            master_sk_to_farmer_sk(&master_key)?.to_bytes(),
+                        ),
+                        launcher_id: Some(plot_nft.launcher_id.as_str),
+                        pool_secret_key: Some(hex::encode(
+                            master_sk_to_pool_sk(&master_key)?.to_bytes(),
+                        )),
+                        owner_secret_key: owner_key,
+                        auth_secret_key: auth_key,
+                    });
+                }
             }
-
             //add nft to config
             config.save_as_yaml(Some(output_path))?;
         }
