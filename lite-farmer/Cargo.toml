@@ -1,35 +1,53 @@
 [package]
 name = "lite-farmer"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2021"
 authors = ["James Hoerr"]
 description = "Lite Farmer and Harvester for the Chia Blockchain"
 
 [dependencies]
-dg_xch_utils.workspace = true
 dialoguer = "0.10.3"
-async-trait = "0.1.58"
-blst = "0.3.7"
-clap = { version = "4.1.1", features = ["derive"] }
+async-trait.workspace = true
+bech32.workspace = true
+bip39.workspace = true
+blst.workspace = true
+bytes.workspace = true
+clap.workspace = true
+dg_xch_cli.workspace = true
+dg_xch_clients.workspace = true
+dg_xch_core.workspace = true
+dg_xch_keys.workspace = true
+dg_xch_pos.workspace = true
+dg_xch_puzzles.workspace = true
+dg_xch_serialize.workspace = true
 futures = "0.3.25"
-futures-util = "0.3.25"
-hex = "0.4.3"
-hyper = {version="0.14.23", features=["full"]}
+futures-util.workspace = true
+hex.workspace = true
+hkdf.workspace = true
+hyper.workspace = true
 hyper-tungstenite = "0.9.0"
-lazy_static = "1.4.0"
-log = "0.4.17"
+lazy_static.workspace = true
+log.workspace = true
+nix.workspace = true
+num-bigint.workspace = true
+num-integer.workspace = true
+num-traits.workspace = true
 openssl = "0.10.45"
+paperclip = { version = "0.8.0", features = ["actix4"] }
 rand = "0.8.5"
-rayon = "1.6.1"
-reqwest = {version="0.11.11", features=["json", "rustls-tls-webpki-roots"]}
-rustls = "0.20.7"
-rustls-pemfile = "1.0.1"
-serde = {version="1.0.136", features = ["derive"]}
-serde_json = "1.0.79"
+rayon.workspace = true
+regex.workspace = true
+reqwest.workspace = true
+rustls.workspace = true
+rustls-pemfile.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 serde_yaml = "0.9.14"
-simple_logger = "4.0.0"
-tokio = {version = "1.18.0", features = ["rt-multi-thread", "macros", "process", "io-util", "fs", "signal"]}
-tokio-rustls = "0.23.4"
-tokio-tungstenite = {version = "0.18.0", features = ["rustls-tls-webpki-roots", "rustls"] }
-uuid = {version= "1.2.2", features=["v4"]}
+sha2.workspace = true
+simple_logger.workspace = true
+time.workspace = true
+tokio.workspace = true
+tokio-rustls.workspace = true
+tokio-tungstenite.workspace = true
+uuid.workspace = true
 webpki-roots = "0.22.6"

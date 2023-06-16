@@ -1,1 +1,4 @@
 build_docker.sh
+.idea
+target
+chia-lite-farmer.iml

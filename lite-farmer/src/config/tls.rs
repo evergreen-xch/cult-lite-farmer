@@ -1,16 +1,43 @@
 use core::task::{Context, Poll};
-use dg_xch_utils::clvm::utils::hash_256;
-use dg_xch_utils::types::blockchain::sized_bytes::Bytes32;
+use dg_xch_core::blockchain::sized_bytes::{Bytes32, SizedBytes};
+use dg_xch_serialize::hash_256;
 use futures_util::ready;
 use hyper::server::accept::Accept;
 use hyper::server::conn::{AddrIncoming, AddrStream};
+use rustls::server::{ClientCertVerified, ClientCertVerifier};
+use rustls::{Certificate, DistinguishedNames, RootCertStore};
 use std::future::Future;
 use std::io::Error;
 use std::net::SocketAddr;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
+use std::time::SystemTime;
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use tokio_rustls::rustls::ServerConfig;
+
+pub struct AllowAny {
+    _roots: RootCertStore,
+}
+impl AllowAny {
+    pub fn new(_roots: RootCertStore) -> Arc<Self> {
+        Arc::new(Self { _roots })
+    }
+}
+
+impl ClientCertVerifier for AllowAny {
+    fn client_auth_root_subjects(&self) -> Option<DistinguishedNames> {
+        Some(vec![])
+    }
+
+    fn verify_client_cert(
+        &self,
+        _end_entity: &Certificate,
+        _intermediates: &[Certificate],
+        _now: SystemTime,
+    ) -> Result<ClientCertVerified, rustls::Error> {
+        Ok(ClientCertVerified::assertion())
+    }
+}
 
 enum State {
     Handshaking(tokio_rustls::Accept<AddrStream>),
@@ -52,7 +79,7 @@ impl AsyncRead for TlsStream {
                     if let Ok(mut mutex) = pin.peer_id.lock() {
                         if let Some(certs) = stream.get_ref().1.peer_certificates() {
                             if !certs.is_empty() {
-                                *mutex = Some(hash_256(&certs[0].0).into());
+                                *mutex = Some(Bytes32::new(&hash_256(&certs[0].0)));
                             }
                         }
                     }
@@ -81,7 +108,7 @@ impl AsyncWrite for TlsStream {
                     if let Ok(mut mutex) = pin.peer_id.lock() {
                         if let Some(certs) = stream.get_ref().1.peer_certificates() {
                             if !certs.is_empty() {
-                                *mutex = Some(hash_256(&certs[0].0).into());
+                                *mutex = Some(Bytes32::new(&hash_256(&certs[0].0)));
                             }
                         }
                     }

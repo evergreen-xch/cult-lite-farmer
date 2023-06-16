@@ -1,4 +1,4 @@
-FROM --platform=linux/amd64 rust:1.66-slim-bullseye AS lite_farmer_toolchain
+FROM --platform=linux/amd64 rust:1.69-slim-bullseye AS lite_farmer_toolchain
 
 ARG TARGETARCH
 
@@ -19,10 +19,27 @@ RUN echo "fn main() {}" > dummy.rs
 FROM lite_farmer_toolchain as lite_farmer_sources
 COPY Cargo.toml Cargo.toml
 COPY dg_xch_utils/Cargo.toml dg_xch_utils/Cargo.toml
+COPY dg_xch_utils/bls/Cargo.toml dg_xch_utils/bls/Cargo.toml
+COPY dg_xch_utils/cli/Cargo.toml dg_xch_utils/cli/Cargo.toml
+COPY dg_xch_utils/clients/Cargo.toml dg_xch_utils/clients/Cargo.toml
+COPY dg_xch_utils/core/Cargo.toml dg_xch_utils/core/Cargo.toml
+COPY dg_xch_utils/keys/Cargo.toml dg_xch_utils/keys/Cargo.toml
+COPY dg_xch_utils/macros/Cargo.toml dg_xch_utils/macros/Cargo.toml
+COPY dg_xch_utils/proof_of_space/Cargo.toml dg_xch_utils/proof_of_space/Cargo.toml
+COPY dg_xch_utils/puzzles/Cargo.toml dg_xch_utils/puzzles/Cargo.toml
+COPY dg_xch_utils/serialize/Cargo.toml dg_xch_utils/serialize/Cargo.toml
 COPY lite-farmer/Cargo.toml lite-farmer/Cargo.toml
 COPY Cargo.lock Cargo.lock
 
-COPY --from=lite_farmer_toolchain dummy.rs dg_xch_utils/src/main.rs
+COPY --from=lite_farmer_toolchain dummy.rs dg_xch_utils/bls/src/lib.rs
+COPY --from=lite_farmer_toolchain dummy.rs dg_xch_utils/cli/src/main.rs
+COPY --from=lite_farmer_toolchain dummy.rs dg_xch_utils/clients/src/lib.rs
+COPY --from=lite_farmer_toolchain dummy.rs dg_xch_utils/core/src/lib.rs
+COPY --from=lite_farmer_toolchain dummy.rs dg_xch_utils/keys/src/lib.rs
+COPY --from=lite_farmer_toolchain dummy.rs dg_xch_utils/macros/src/lib.rs
+COPY --from=lite_farmer_toolchain dummy.rs dg_xch_utils/proof_of_space/src/lib.rs
+COPY --from=lite_farmer_toolchain dummy.rs dg_xch_utils/puzzles/src/lib.rs
+COPY --from=lite_farmer_toolchain dummy.rs dg_xch_utils/serialize/src/lib.rs
 COPY --from=lite_farmer_toolchain dummy.rs lite-farmer/src/main.rs
 
 # Build the project
