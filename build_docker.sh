@@ -8,5 +8,6 @@ docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
 
 DOCKER_BUILDKIT=1 docker buildx build \
   --platform linux/amd64 \
+  -t lite-farmer:latest \
   --target=lite_farmer \
   -o type=docker,dest=- . > lite_farmer.tar
