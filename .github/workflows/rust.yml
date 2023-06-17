@@ -13,6 +13,11 @@ jobs:
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v3
+        with:
+          persist-credentials: false
+      - name: Reconfigure git to use HTTP authentication
+        run: >
+          git config --global url.https://github.com/.insteadOf git@github.com:
       - name: Checkout submodules
         run: git submodule update --init --recursive
       - name: Run Format
@@ -25,6 +30,11 @@ jobs:
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v3
+        with:
+          persist-credentials: false
+      - name: Reconfigure git to use HTTP authentication
+        run: >
+          git config --global url.https://github.com/.insteadOf git@github.com:
       - name: Checkout submodules
         run: git submodule update --init --recursive
       - name: Install Dependencies
