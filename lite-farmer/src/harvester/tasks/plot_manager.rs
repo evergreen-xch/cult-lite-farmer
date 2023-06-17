@@ -79,7 +79,7 @@ impl PlotManager {
         for dir in &self.config.harvester.plot_directories {
             let plot_dir_path = Path::new(dir);
             if plot_dir_path.exists() {
-                info!("Validating Plot Directory: {}", dir);
+                debug!("Validating Plot Directory: {}", dir);
                 match read_all_plot_headers(plot_dir_path) {
                     Ok((headers, failed)) => {
                         debug!(
