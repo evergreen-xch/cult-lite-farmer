@@ -65,7 +65,9 @@ impl HarvesterServer {
         let tls_cfg = Arc::new(
             ServerConfig::builder()
                 .with_safe_defaults()
-                .with_client_cert_verifier(AllowAnyAuthenticatedClient::new(root_cert_store))
+                .with_client_cert_verifier(Arc::new(AllowAnyAuthenticatedClient::new(
+                    root_cert_store,
+                )))
                 .with_single_cert(certs, key)
                 .map_err(|e| {
                     Error::new(
