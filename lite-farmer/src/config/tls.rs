@@ -5,7 +5,7 @@ use futures_util::ready;
 use hyper::server::accept::Accept;
 use hyper::server::conn::{AddrIncoming, AddrStream};
 use rustls::server::{ClientCertVerified, ClientCertVerifier};
-use rustls::{Certificate, DistinguishedNames, RootCertStore};
+use rustls::{Certificate, DistinguishedName, RootCertStore};
 use std::future::Future;
 use std::io::Error;
 use std::net::SocketAddr;
@@ -25,8 +25,8 @@ impl AllowAny {
 }
 
 impl ClientCertVerifier for AllowAny {
-    fn client_auth_root_subjects(&self) -> Option<DistinguishedNames> {
-        Some(vec![])
+    fn client_auth_root_subjects(&self) -> &[DistinguishedName] {
+        &[]
     }
 
     fn verify_client_cert(
