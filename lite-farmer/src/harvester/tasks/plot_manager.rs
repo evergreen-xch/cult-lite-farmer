@@ -74,18 +74,21 @@ impl PlotManager {
             "Checking Plot Directories: {:?}",
             &self.config.harvester.plot_directories
         );
+        let mut all_jobs = vec![];
+        let mut all_failed = vec![];
         for dir in &self.config.harvester.plot_directories {
             let plot_dir_path = Path::new(dir);
             if plot_dir_path.exists() {
-                info!("Validating Plot Directory: {}", dir);
+                debug!("Validating Plot Directory: {}", dir);
                 match read_all_plot_headers(plot_dir_path) {
-                    Ok((headers, mut failed)) => {
+                    Ok((headers, failed)) => {
                         debug!(
                             "Plot Headers Processed: {}, Failed: {}",
                             headers.len(),
                             failed.len()
                         );
-                        let mut jobs = headers
+                        all_failed.extend(failed);
+                        let jobs = headers
                             .into_iter()
                             .filter_map(|(path, header)| {
                                 if let Some(key) = &header.memo.pool_public_key {
@@ -176,40 +179,7 @@ impl PlotManager {
                                 }))
                             })
                             .collect::<Vec<JoinHandle<Result<(String, PlotInfo), PathBuf>>>>();
-                        let mut plots: HashMap<String, Arc<PlotInfo>> = Default::default();
-                        for results in join_all(&mut jobs).await {
-                            match results {
-                                Ok(plot_res) => match plot_res {
-                                    Ok((k, v)) => {
-                                        plots.insert(k, Arc::new(v));
-                                    }
-                                    Err(e) => {
-                                        error!("Failed to read plot: {:?}", e);
-                                        failed.push(e);
-                                    }
-                                },
-                                Err(e) => {
-                                    error!("Join Error for Plot Read Thread: {:?}", e);
-                                }
-                            }
-                        }
-                        let og_count = plots
-                            .iter()
-                            .filter(|f| f.1.pool_public_key.is_some())
-                            .count();
-                        let pool_count = plots
-                            .iter()
-                            .filter(|f| f.1.pool_contract_puzzle_hash.is_some())
-                            .count();
-
-                        info!("Loaded {} og plots and {} pooling plots, failed to load {}, missing keys for {}", og_count, pool_count, failed.len(), self.plots_missing_keys.len());
-                        self.failed_to_open.extend(failed);
-                        self.plots.extend(plots.into_iter());
-                        let mut state = harvester_state.lock().await;
-                        state.nft_plot_count = pool_count;
-                        state.og_plot_count = og_count;
-                        state.invalid_plot_count = self.failed_to_open.len();
-                        state.plot_space = self.plots.values().map(|i| i.file_size).sum();
+                        all_jobs.extend(jobs);
                     }
                     Err(e) => {
                         error!("Failed to validate plot dir: {}, {:?}", dir, e);
@@ -219,6 +189,46 @@ impl PlotManager {
                 warn!("Invalid Plot Directory: {}", dir);
             }
         }
+        let mut plots: HashMap<String, Arc<PlotInfo>> = Default::default();
+        for results in join_all(&mut all_jobs).await {
+            match results {
+                Ok(plot_res) => match plot_res {
+                    Ok((k, v)) => {
+                        plots.insert(k, Arc::new(v));
+                    }
+                    Err(e) => {
+                        error!("Failed to read plot: {:?}", e);
+                        all_failed.push(e);
+                    }
+                },
+                Err(e) => {
+                    error!("Join Error for Plot Read Thread: {:?}", e);
+                }
+            }
+        }
+        let og_count = plots
+            .iter()
+            .filter(|f| f.1.pool_public_key.is_some())
+            .count();
+        let pool_count = plots
+            .iter()
+            .filter(|f| f.1.pool_contract_puzzle_hash.is_some())
+            .count();
+
+        info!(
+            "Loaded {} og plots and {} pooling plots, failed to load {}, missing keys for {}",
+            og_count,
+            pool_count,
+            all_failed.len(),
+            self.plots_missing_keys.len()
+        );
+        self.failed_to_open.extend(all_failed);
+        self.plots.extend(plots.into_iter());
+        let mut state = harvester_state.lock().await;
+        state.nft_plot_count = pool_count;
+        state.og_plot_count = og_count;
+        state.invalid_plot_count = self.failed_to_open.len();
+        state.plot_space = self.plots.values().map(|i| i.file_size).sum();
         info!("Plots Found: {}", self.plots.keys().len());
         Ok(())
     }

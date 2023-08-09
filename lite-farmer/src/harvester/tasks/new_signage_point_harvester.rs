@@ -17,7 +17,7 @@ use futures_util::stream::FuturesUnordered;
 use futures_util::StreamExt;
 use hex::encode;
 use hyper_tungstenite::tungstenite::Message;
-use log::{debug, error, info, trace, warn};
+use log::{debug, error, info, trace};
 use std::io::{Cursor, Error};
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -102,7 +102,7 @@ impl MessageHandler for NewSignagePointHarvesterHandle {
                                 sub_slot_iters = p_dif.sub_slot_iters;
                                 is_partial = true;
                             } else if plot_info.prover.header.memo.pool_contract_puzzle_hash.is_some() {
-                                warn!("Failed to find Pool Contract Difficulties for PH: {} ", pool_contract_puzzle_hash);
+                                debug!("Failed to find Pool Contract Difficulties for PH: {} ", pool_contract_puzzle_hash);
                             }
                         }
                         for (index, quality) in qualities.into_iter().enumerate() {
