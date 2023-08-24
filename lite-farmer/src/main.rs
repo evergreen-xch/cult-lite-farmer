@@ -65,6 +65,7 @@ async fn main() -> Result<(), Error> {
             fullnode_port,
             fullnode_ssl,
             network,
+            launcher_id,
         } => {
             let output_path = cli
                 .config
@@ -78,6 +79,7 @@ async fn main() -> Result<(), Error> {
                 fullnode_ssl,
                 network,
                 None,
+                launcher_id,
             )
             .await?;
         }

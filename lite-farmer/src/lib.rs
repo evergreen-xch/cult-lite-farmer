@@ -3,12 +3,12 @@ use crate::farmer::{Farmer, FarmerState};
 use crate::harvester::{Harvester, HarvesterState};
 use blst::min_pk::SecretKey;
 use clap::{Parser, Subcommand, ValueEnum};
-use dg_xch_cli::commands::scrounge_for_plotnfts;
+use dg_xch_cli::commands::{get_plotnft_by_launcher_id, scrounge_for_plotnfts};
 use dg_xch_clients::api::full_node::FullnodeAPI;
 use dg_xch_clients::api::pool::{DefaultPoolClient, PoolClient};
 use dg_xch_clients::rpc::full_node::FullnodeClient;
 use dg_xch_clients::websocket::{NodeType, ServerConnection};
-use dg_xch_core::blockchain::sized_bytes::Bytes48;
+use dg_xch_core::blockchain::sized_bytes::{hex_to_bytes, Bytes48, SizedBytes};
 use dg_xch_core::consensus::constants::{ConsensusConstants, CONSENSUS_CONSTANTS_MAP, MAINNET};
 use dg_xch_core::plots::PlotHeader;
 use dg_xch_keys::{
@@ -66,6 +66,8 @@ pub enum Action {
         fullnode_ssl: Option<String>,
         #[arg(short = 'n', long)]
         network: Option<String>,
+        #[arg(short = 'l', long)]
+        launcher_id: Option<String>,
     },
 }
 
@@ -319,6 +321,7 @@ pub async fn run<T: PoolClient + Sized + Sync + Send + 'static>(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn generate_config_from_mnemonic(
     output_path: Option<PathBuf>,
     mnemonic: String,
@@ -327,6 +330,7 @@ pub async fn generate_config_from_mnemonic(
     fullnode_ssl: Option<String>,
     network: Option<String>,
     additional_headers: Option<HashMap<String, String>>,
+    launcher_id: Option<String>,
 ) -> Result<Config, Error> {
     if let Some(op) = &output_path {
         if op.exists()
@@ -393,7 +397,20 @@ pub async fn generate_config_from_mnemonic(
     }
     config.farmer.xch_target_address =
         encode_puzzle_hash(&puzzle_hashes[0], &constants.bech32_prefix)?;
-    let plotnfs = scrounge_for_plotnfts(&client, &puzzle_hashes).await?;
+
+    let mut plotnfs = scrounge_for_plotnfts(&client, &puzzle_hashes).await?;
+    if plotnfs.is_empty() {
+        if let Some(lid) = launcher_id {
+            if let Ok(nft_bytes) = hex_to_bytes(&lid) {
+                let sized = SizedBytes::new(&nft_bytes);
+                let nft = get_plotnft_by_launcher_id(&client, &sized).await?;
+                if let Some(nft) = nft {
+                    plotnfs.push(nft);
+                }
+            }
+        }
+    }
+
     for plot_nft in plotnfs {
         config.pool_info.push(PoolWalletConfig {
             launcher_id: plot_nft.launcher_id,

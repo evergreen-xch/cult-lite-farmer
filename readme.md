@@ -29,6 +29,14 @@ First generate a config, this will search for PlotNFTs that belong to your keys 
 cargo run --release --bin lite-farmer -- run --release --bin lite-farmer -- -c "/path/to/config/farmer_config.yaml" init -m "MNEMONIC" -f FULLNODE_HOST -p FULLNODE_RPC_PORT -n SELECTED_NETWORK
 ```
 
+Optional parameters for the ssl root and launcher id
+
+```
+cargo run --release --bin lite-farmer -- run --release --bin lite-farmer -- -c "/path/to/config/farmer_config.yaml" init -m "MNEMONIC" -f FULLNODE_HOST -p FULLNODE_RPC_PORT -n SELECTED_NETWORK -s "/chia/mainnet/config/ssl/"  -l "0xLAUNCHER_ID"
+```
+
+Edit the generated configuration by accepting the license and adding your plot_directories
+
 Then Start the Farmer and Harvester:
 
 ```

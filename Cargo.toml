@@ -55,3 +55,7 @@ tokio = {version = "1.21.2", features = ["rt-multi-thread", "macros", "process",
 tokio-tungstenite = {version = "0.20.0", features = ["rustls-tls-webpki-roots", "rustls"] }
 tokio-rustls = {version = "0.24.1", features = [] }
 uuid = {version= "1.2.2", features=["v4"]}
+
+[profile.release]
+lto = true
+codegen-units = 1
